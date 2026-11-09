@@ -41,7 +41,7 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      # The server's host name, filled in by Render.
+      # The server's internal host name, filled in by Render; the web app adds .onrender.com.
       - key: VITE_API_URL
         fromService:
           type: web

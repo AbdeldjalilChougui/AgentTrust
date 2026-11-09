@@ -3,7 +3,10 @@ import { themeQuartz } from "ag-grid-community";
 
 // On Render the blueprint passes the server's bare host name.
 const rawApi = (import.meta.env.VITE_API_URL || "http://localhost:4500").replace(/\/$/, "");
-export const API = /^https?:\/\//.test(rawApi) ? rawApi : `https://${rawApi}`;
+// Render passes the service's internal host name ("agenttrust-server"): its
+// public address is the same name on onrender.com.
+const host = rawApi.includes(".") || rawApi.includes("localhost") ? rawApi : `${rawApi}.onrender.com`;
+export const API = /^https?:\/\//.test(host) ? host : `https://${host}`;
 
 export type Mandate = {
   id: string;
