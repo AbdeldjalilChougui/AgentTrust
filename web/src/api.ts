@@ -1,7 +1,9 @@
 // Typed client for the AgentTrust server.
 import { themeQuartz } from "ag-grid-community";
 
-export const API = (import.meta.env.VITE_API_URL ?? "http://localhost:4500").replace(/\/$/, "");
+// On Render the blueprint passes the server's bare host name.
+const rawApi = (import.meta.env.VITE_API_URL || "http://localhost:4500").replace(/\/$/, "");
+export const API = /^https?:\/\//.test(rawApi) ? rawApi : `https://${rawApi}`;
 
 export type Mandate = {
   id: string;

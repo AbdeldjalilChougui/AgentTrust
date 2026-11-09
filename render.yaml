@@ -22,12 +22,6 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-flash-lite-latest
-      # This service's URL, e.g. https://agenttrust-server.onrender.com
-      - key: PUBLIC_BASE_URL
-        sync: false
-      # The dashboard's URL, e.g. https://agenttrust-web.onrender.com
-      - key: WEB_URL
-        sync: false
       # Keeps the demo owner connected and the agent token stable across restarts.
       - key: DEMO_PAYMENT_TOKEN_ID
         sync: false
@@ -45,5 +39,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      # The server's host name, filled in by Render.
       - key: VITE_API_URL
-        sync: false
+        fromService:
+          type: web
+          name: agenttrust-server
+          property: host

@@ -99,7 +99,7 @@ function PayPalCard({ state, refresh }: { state: AppState; refresh: () => void }
     setBusy(true);
     setErr("");
     try {
-      const { approveUrl } = await api<{ approveUrl: string }>("POST", "/api/owner/paypal/connect");
+      const { approveUrl } = await api<{ approveUrl: string }>("POST", "/api/owner/paypal/connect", { webUrl: location.origin });
       location.href = approveUrl;
     } catch (e) {
       setErr((e as Error).message);

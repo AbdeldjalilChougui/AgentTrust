@@ -136,8 +136,15 @@ app.post("/api/purchases/:id/refund", ownerOnly, wrap(async (req, res) => {
 
 // PayPal connect: the owner approves AgentTrust once; PayPal returns a
 // reusable payment token, so agents can buy without a checkout window.
-app.post("/api/owner/paypal/connect", ownerOnly, wrap(async (_req, res) => {
-  const t = await paypal.createSetupToken(`${BASE_URL}/api/owner/paypal/return`, `${WEB_URL}/?paypal=cancelled`);
+// Where to send the owner back after PayPal: the dashboard that asked, if it is
+// a known kind of origin (no open redirect), else WEB_URL.
+let returnTo = WEB_URL;
+const okOrigin = (u: string) => u === WEB_URL || /^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(u) || /^http:\/\/localhost:\d+$/.test(u);
+
+app.post("/api/owner/paypal/connect", ownerOnly, wrap(async (req, res) => {
+  const origin = String(req.body?.webUrl ?? "").replace(/\/$/, "");
+  returnTo = okOrigin(origin) ? origin : WEB_URL;
+  const t = await paypal.createSetupToken(`${BASE_URL}/api/owner/paypal/return`, `${returnTo}/?paypal=cancelled`);
   owner().paypal = { ...owner().paypal, status: owner().paypal.status === "connected" ? "connected" : "pending", setupTokenId: t.id };
   save();
   res.json({ approveUrl: t.approveUrl });
@@ -150,9 +157,9 @@ app.get("/api/owner/paypal/return", wrap(async (req, res) => {
     owner().paypal = { status: "connected", paymentTokenId: t.id, payerEmail: t.payerEmail, connectedAt: new Date().toISOString() };
     save();
     console.log(`PayPal connected: payment token ${t.id}`);
-    res.redirect(`${WEB_URL}/?paypal=connected`);
+    res.redirect(`${returnTo}/?paypal=connected`);
   } catch (e) {
-    res.redirect(`${WEB_URL}/?paypal=error&reason=${encodeURIComponent((e as Error).message)}`);
+    res.redirect(`${returnTo}/?paypal=error&reason=${encodeURIComponent((e as Error).message)}`);
   }
 }));
 
