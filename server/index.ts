@@ -4,11 +4,12 @@ import { BASE_URL, PAYPAL_MODE, PORT, WEB_URL } from "./env.js";
 import { db, findAgentByToken, findStore, load, mandateOf, ownerOf, reputation, save, type Agent } from "./db.js";
 import { PayPalMock, createProvider } from "./paypal.js";
 import { DEMO_AGENT, DEMO_OWNER, resetDemo, seed } from "./seed.js";
-import { storefrontRouter } from "./stores/storefront.js";
+import { resetRenewals, storefrontRouter } from "./stores/storefront.js";
 import { draftStore, publishStore } from "./storekit.js";
 import { TrustEngine } from "./trust.js";
 import { agentTools, runAgent, runAttack, summarize, type RunEvent } from "./agent.js";
 import { geminiReady } from "./gemini.js";
+import { TOOL_POLICY } from "./paypal-tools.js";
 
 load();
 const { agent: demoAgent } = seed();
@@ -73,6 +74,23 @@ app.get("/api/state", (_req, res) => {
 });
 
 app.get("/api/stores", (_req, res) => void res.json(db().stores.map((s) => storeView(s))));
+app.get("/api/paypal-tools", (_req, res) => void res.json(TOOL_POLICY));
+
+// PayPal webhooks: PayPal's own confirmation of each step lands in the
+// purchase timeline. Signatures are verified when PAYPAL_WEBHOOK_ID is set.
+app.post("/webhooks/paypal", wrap(async (req, res) => {
+  const event = req.body ?? {};
+  const verified = await paypal.verifyWebhook(req.headers, event).catch(() => false);
+  if (process.env.PAYPAL_WEBHOOK_ID && !verified) return void res.status(400).json({ error: "signature not verified" });
+  const r = event.resource ?? {};
+  const ids = [r.id, r.supplementary_data?.related_ids?.order_id, r.supplementary_data?.related_ids?.authorization_id].filter(Boolean);
+  const p = db().purchases.find((x) => ids.some((id: string) => Object.values(x.paypal).includes(id)));
+  if (p) {
+    p.timeline.push({ at: new Date().toISOString(), step: "paypal", detail: `PayPal webhook ${event.event_type}${verified ? " (verified)" : ""}` });
+    save();
+  }
+  res.json({ ok: true });
+}));
 app.get("/api/purchases", (req, res) => void res.json(db().purchases.slice(0, Math.min(200, Number(req.query.limit ?? 100)))));
 
 app.put("/api/owner/mandate", ownerOnly, (req, res) => {
@@ -94,6 +112,7 @@ app.post("/api/owner/pause", ownerOnly, (req, res) => {
 
 app.post("/api/owner/reset", ownerOnly, (_req, res) => {
   resetDemo();
+  resetRenewals();
   res.json({ ok: true });
 });
 
@@ -183,6 +202,9 @@ app.get("/agent/v1/purchases", agentAuth, (_req, res) => void res.json(tools(res
 app.post("/agent/v1/buy", agentAuth, wrap(async (req, res) => {
   const b = req.body ?? {};
   res.json(await tools(res).buy(String(b.store), b.product_id ? String(b.product_id) : undefined, b.params ?? {}));
+}));
+app.post("/agent/v1/paypal", agentAuth, wrap(async (req, res) => {
+  res.json(await tools(res).paypal(String(req.body?.tool ?? ""), req.body?.args ?? {}));
 }));
 app.post("/agent/v1/dispute", agentAuth, wrap(async (req, res) => {
   res.json(await tools(res).dispute(String(req.body?.purchase_id), String(req.body?.reason ?? "not as described")));

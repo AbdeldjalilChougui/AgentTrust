@@ -120,7 +120,7 @@ export class TrustEngine {
     // 1. The store quotes. Its listing price is what the owner approved.
     let amount = product.price;
     try {
-      const q = await (await post(`${store.storefrontUrl}/quote`, { productId: product.id, params: req.params ?? {} }, 10_000)).json();
+      const q = await (await post(`${store.storefrontUrl}/quote`, { productId: product.id, params: req.params ?? {}, buyer: agent.id }, 10_000)).json();
       amount = round2(Number(q.amount));
     } catch {
       p.status = "failed";
@@ -170,7 +170,7 @@ export class TrustEngine {
     let contentType = "";
     let delivered = false;
     try {
-      const res = await post(`${store.storefrontUrl}/fulfil`, { productId: product.id, params: req.params ?? {}, purchaseId: p.id }, 15_000);
+      const res = await post(`${store.storefrontUrl}/fulfil`, { productId: product.id, params: req.params ?? {}, purchaseId: p.id, buyer: agent.id }, 15_000);
       body = await res.text();
       contentType = res.headers.get("content-type") ?? "";
       delivered = res.ok;
@@ -201,6 +201,20 @@ export class TrustEngine {
         store.stats.revenue = round2(store.stats.revenue + amount);
         m.totalCaptured = round2(m.totalCaptured + amount);
         step(p, "captured", `$${amount.toFixed(2)} paid to ${store.name}`);
+        // Physical goods: put the shipment on the PayPal order, so the owner
+        // sees the tracking in PayPal.
+        if (product.kind === "physical") {
+          try {
+            const d = JSON.parse(body) as { tracking_number?: string; carrier?: string };
+            if (d.tracking_number) {
+              await this.paypal.addTracking({ orderId: p.paypal.orderId!, captureId: c.captureId, trackingNumber: d.tracking_number, carrier: d.carrier ?? "OTHER" });
+              p.paypal.tracking = `${d.carrier ?? "OTHER"} ${d.tracking_number}`;
+              step(p, "tracking", `shipment ${p.paypal.tracking} added to the PayPal order`);
+            }
+          } catch (e) {
+            step(p, "tracking", `could not add tracking: ${(e as Error).message}`);
+          }
+        }
       } catch (e) {
         p.status = "failed";
         p.reason = `capture failed: ${(e as Error).message}`;

@@ -46,9 +46,10 @@ export function seed() {
 
   let agent = s.agents.find((a) => a.id === DEMO_AGENT);
   if (!agent) {
-    agent = { id: DEMO_AGENT, ownerId: DEMO_OWNER, name: "Research assistant", token: process.env.DEMO_AGENT_TOKEN ?? newToken(), paused: false, createdAt: now() };
+    agent = { id: DEMO_AGENT, ownerId: DEMO_OWNER, name: "Shopping assistant", token: process.env.DEMO_AGENT_TOKEN ?? newToken(), paused: false, createdAt: now() };
     s.agents.push(agent);
   }
+  agent.name = "Shopping assistant";
   if (process.env.DEMO_AGENT_TOKEN) agent.token = process.env.DEMO_AGENT_TOKEN;
 
   if (!s.mandates.find((m) => m.agentId === DEMO_AGENT)) {

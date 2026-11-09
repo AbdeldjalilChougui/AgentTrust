@@ -25,8 +25,9 @@ Product: ${product.name}
 Promised deliverable: ${product.deliverable}
 Delivery (truncated):
 ${body.slice(0, 1500)}
-Digital goods (files, e-books, packs, software) are delivered as a download link and/or licence key, and services as a booking link: that counts as delivered.
-Is this delivery what was promised? Be strict about wrong, unrelated, error or empty content; lenient about format details.`,
+Digital goods (files, e-books, software) arrive as a download link, licence key or ticket code; services as a booking confirmation or booking link; physical goods as a shipping confirmation with a tracking number. That counts as delivered.
+Placeholders, "coming soon", empty file lists or lorem ipsum do NOT count.
+Is this delivery what was promised? Be strict about wrong, unrelated, placeholder, error or empty content; lenient about format details.`,
     );
     return { ok: !!v.ok, by: "ai", reason: String(v.reason ?? "").slice(0, 160) || (v.ok ? "matches the order" : "does not match the order") };
   } catch {

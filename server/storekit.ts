@@ -9,7 +9,7 @@ type Draft = {
   name: string;
   description: string;
   category: string;
-  products: { name: string; description: string; price: number; category: string; deliverable: string; kind: "data" | "digital" | "service" }[];
+  products: { name: string; description: string; price: number; category: string; deliverable: string; kind: "data" | "digital" | "service" | "physical" }[];
 };
 
 const slugify = (s: string) =>
@@ -38,9 +38,9 @@ export async function draftStore(input: { name: string; text: string }): Promise
     try {
       const draft = await askJson<Draft>(`Turn this merchant's description into a store catalog for AI shopping agents.
 Answer JSON only:
-{"name": string (<=32 chars), "description": string (<=120), "category": one of ["data","news","books","travel","software","design","education","digital"],
+{"name": string (<=32 chars), "description": string (<=120), "category": one of ["travel","books","software","gifts","services","tickets","design","education","food","digital"],
  "products": [{"name": string (<=60), "description": string (<=160), "price": number in USD, "category": same set,
-   "deliverable": "what the buyer receives, e.g. \"a download link and licence key for <product>\" for digital goods", "kind": "digital"|"data"|"service"}] (1 to 12 products)}
+   "deliverable": "what the buyer receives, e.g. \"a download link and licence key for <product>\" (digital), \"a booking confirmation\" (service), \"a shipping confirmation with a tracking number\" (physical)", "kind": "digital"|"service"|"physical"}] (1 to 12 products)}
 Use the merchant's prices when given; otherwise suggest fair prices. Store name if given: "${input.name}".
 Merchant input:
 ${input.text.slice(0, 4000)}`);
@@ -54,7 +54,7 @@ ${input.text.slice(0, 4000)}`);
   return { draft, by: "parser" };
 }
 
-export function publishStore(d: Draft): Store {
+export function publishStore(d: Draft & { payeeEmail?: string }): Store {
   let slug = slugify(d.name);
   while (db().stores.some((s) => s.slug === slug)) slug = `${slug.slice(0, 28)}-${Math.random().toString(36).slice(2, 5)}`;
   const store: Store = {
@@ -64,6 +64,8 @@ export function publishStore(d: Draft): Store {
     description: d.description.slice(0, 160),
     category: d.category || "digital",
     storefrontUrl: `${BASE_URL}/stores/${slug}`,
+    // Orders pay this PayPal account directly (a sandbox business account in the demo).
+    payeeEmail: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.payeeEmail ?? "") ? d.payeeEmail : undefined,
     products: d.products.slice(0, 12).map((p, i): Product => ({
       id: `${slug}-${i + 1}`,
       name: p.name.slice(0, 60),
@@ -71,7 +73,7 @@ export function publishStore(d: Draft): Store {
       price: round2(Math.max(0.01, Number(p.price) || 1)),
       category: p.category || d.category || "digital",
       deliverable: p.deliverable || `The product "${p.name}"`,
-      kind: p.kind === "data" || p.kind === "service" ? p.kind : "digital",
+      kind: p.kind === "service" || p.kind === "physical" ? p.kind : "digital",
     })),
     behavior: "honest",
     createdBy: "store-kit",

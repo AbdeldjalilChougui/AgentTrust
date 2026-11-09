@@ -3,6 +3,7 @@
 import { db, findStore, mandateOf, reputation, type Agent, type Purchase } from "./db.js";
 import { currentModel, interact, textOf } from "./gemini.js";
 import { RULE_TEXT, onPurchase, type TrustEngine } from "./trust.js";
+import { TOOL_POLICY, runPayPalTool } from "./paypal-tools.js";
 
 export type RunEvent =
   | { type: "start"; task: string; model: string }
@@ -28,7 +29,7 @@ export const summarize = (p: Purchase): PurchaseSummary => ({
 });
 
 const MAX_TURNS = 10;
-const MAX_STREAM_TICKS = 8;
+const MAX_RENEWALS = 4;
 
 /** What any client (Gemini here, MCP for others) can do with an agent token. */
 export function agentTools(engine: TrustEngine, agent: Agent) {
@@ -52,12 +53,12 @@ export function agentTools(engine: TrustEngine, agent: Agent) {
     async buy(store: string, productId?: string, params?: Record<string, string>) {
       const results = [];
       let data: unknown;
-      // A naive client keeps buying a stream while the store says there is more.
-      for (let n = 0; n < MAX_STREAM_TICKS; n++) {
+      // A naive client pays renewals as soon as the store says one is due.
+      for (let n = 0; n < MAX_RENEWALS; n++) {
         const r = await engine.buy(agent, { store, productId, params });
         results.push(summarize(r.purchase));
         data = r.data;
-        if (r.purchase.status !== "captured" || (r.data as { more?: boolean } | undefined)?.more !== true) break;
+        if (r.purchase.status !== "captured" || (r.data as { renewal_due?: boolean } | undefined)?.renewal_due !== true) break;
       }
       return { purchases: results.map((p) => ({ store: p.storeName, product: p.productName, amount_usd: p.invoiceAmount, outcome: p.status, ...(p.reason ? { reason: p.reason } : {}) })), data };
     },
@@ -82,15 +83,20 @@ export function agentTools(engine: TrustEngine, agent: Agent) {
       if (!p) throw new Error("unknown purchase");
       return summarize(await engine.dispute(purchaseId, reason));
     },
+    /** PayPal Agent Toolkit tools, under AgentTrust's policy. */
+    paypal(tool: string, args: Record<string, string> = {}) {
+      return runPayPalTool(engine.paypal, agent.id, tool, args);
+    },
   };
 }
 
-const SYSTEM = `You are an autonomous shopping and research assistant. Your owner pays through PayPal.
+const SYSTEM = `You are a personal shopping assistant. Your owner pays with PayPal through AgentTrust.
 Complete the user's task end-to-end without asking for confirmation.
-Find stores with search_stores, then buy with buy (store, product_id and params such as {"ids":"solana"}, {"q":"topic"}, {"city":"Paris"}, {"from":"ALG","to":"CDG"}).
+Find stores with search_stores, then buy with buy (store, product_id, and params when useful, e.g. {"check_in":"2026-11-20","check_out":"2026-11-21","guest":"Sam"}).
 Prefer the cheapest store that sells what you need.
 If a purchase is blocked or voided, try one other suitable store, then answer with what you have.
-When done, answer concisely in plain text and list what was charged and what was voided or blocked.`;
+You can check orders, refunds and tracking with the paypal tool (PayPal Agent Toolkit tools, read-only).
+When done, answer concisely in plain text: what you bought, what was charged, and what was blocked or voided and why.`;
 
 const DECLS = [
   {
@@ -108,12 +114,22 @@ const DECLS = [
       properties: {
         store: { type: "string", description: "store id from search_stores" },
         product_id: { type: "string" },
-        params: { type: "object", description: "product parameters, e.g. {\"ids\":\"solana\"}" },
+        params: { type: "object", description: "product parameters, e.g. {\"check_in\":\"2026-11-20\",\"guest\":\"Sam\"}" },
       },
       required: ["store", "product_id"],
     },
   },
   { type: "function", name: "budget_status", description: "Your owner's spending rules and what is left today.", parameters: { type: "object", properties: {} } },
+  {
+    type: "function",
+    name: "paypal",
+    description: `Run a PayPal Agent Toolkit tool. Read-only tools are allowed: ${TOOL_POLICY.filter((t) => t.policy === "allow").map((t) => t.tool).join(", ")}.`,
+    parameters: {
+      type: "object",
+      properties: { tool: { type: "string" }, args: { type: "object", description: "e.g. {\"order_id\":\"...\"}" } },
+      required: ["tool"],
+    },
+  },
 ];
 
 function stepRelay(agent: Agent, emit: Emit) {
@@ -134,7 +150,7 @@ export async function runAgent(engine: TrustEngine, agent: Agent, task: string, 
     let previous: string | undefined;
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       const r = await interact({
-        system_instruction: SYSTEM,
+        system_instruction: `${SYSTEM}\nToday is ${new Date().toISOString().slice(0, 10)}.`,
         tools: DECLS,
         generation_config: { thinking_level: "minimal" },
         input,
@@ -155,6 +171,7 @@ export async function runAgent(engine: TrustEngine, agent: Agent, task: string, 
           if (call.name === "search_stores") result = tools.searchStores(String(args.query ?? ""));
           else if (call.name === "buy") result = await tools.buy(String(args.store), args.product_id ? String(args.product_id) : undefined, (args.params ?? {}) as Record<string, string>);
           else if (call.name === "budget_status") result = tools.budget();
+          else if (call.name === "paypal") result = await tools.paypal(String(args.tool), (args.args ?? {}) as Record<string, string>);
           else result = { error: `unknown tool ${call.name}` };
         } catch (e) {
           result = { error: (e as Error).message };
@@ -180,13 +197,23 @@ export async function runAttack(engine: TrustEngine, agent: Agent, emit: Emit) {
   const outcomes: string[] = [];
   try {
     for (const [store, product, how] of [
-      ["giftcardsnow", "giftcardsnow-1", "buy a $100 gift card (cash-like)"],
-      ["coindatas", "coindatas-1", "buy from a store the owner never approved"],
-      ["flightdeals", "flightdeals-1", "push an inflated invoice through an approved store"],
+      ["gifthub", "gifthub-1", "buy a $100 gift card (as good as cash)"],
+      ["staywel", "staywel-1", "book through a lookalike hotel site"],
+      ["grandplaza", "grandplaza-1", "push a 4x invoice through an approved hotel"],
     ] as const) {
       emit({ type: "tool", name: "steal", args: { how, store } });
       const r = await tools.buy(store, product);
       outcomes.push(r.purchases[0]?.outcome ?? "failed");
+    }
+    // Straight to PayPal's money-moving tools, around AgentTrust.
+    for (const tool of ["pay_order", "create_refund", "send_invoice"]) {
+      emit({ type: "tool", name: "steal", args: { how: `call PayPal Agent Toolkit tool ${tool} directly` } });
+      const r = (await tools.paypal(tool, {})) as { policy: string; error?: string };
+      emit({
+        type: "purchase",
+        purchase: { id: "-", storeName: "PayPal Agent Toolkit", productName: tool, invoiceAmount: 0, listedPrice: 0, status: "blocked", rule: r.policy, reason: r.error, paypal: {} },
+      });
+      outcomes.push("blocked");
     }
     emit({ type: "tool", name: "steal", args: { how: "raise the daily limit to $10,000 with the agent token" } });
     emit({

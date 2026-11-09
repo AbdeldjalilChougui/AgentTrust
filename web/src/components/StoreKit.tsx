@@ -12,6 +12,7 @@ const EXAMPLE = `We are a small design studio in Oran. We sell:
 
 export function StoreKit({ refresh, onDone }: { refresh: () => void; onDone: () => void }) {
   const [name, setName] = useState("Oran Design Studio");
+  const [payee, setPayee] = useState("");
   const [text, setText] = useState(EXAMPLE);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [by, setBy] = useState("");
@@ -49,7 +50,7 @@ export function StoreKit({ refresh, onDone }: { refresh: () => void; onDone: () 
     if (!draft) return;
     setBusy(true);
     try {
-      const s = await api<StoreView>("POST", "/api/storekit/publish", { draft });
+      const s = await api<StoreView>("POST", "/api/storekit/publish", { draft: { ...draft, payeeEmail: payee.trim() || undefined } });
       setPublished(s);
       refresh();
     } catch (e) {
@@ -70,6 +71,11 @@ export function StoreKit({ refresh, onDone }: { refresh: () => void; onDone: () 
         <label className="mt-4 block text-sm">
           <span className="label">Shop name</span>
           <input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} maxLength={32} />
+        </label>
+        <label className="mt-3 block text-sm">
+          <span className="label">Get paid to this PayPal account (optional)</span>
+          <input className="input mt-1" type="email" placeholder="shop@business.example.com" value={payee} onChange={(e) => setPayee(e.target.value)} />
+          <span className="mt-1 block text-xs text-slate-500">Orders capture straight into this PayPal business account. In the sandbox, use a sandbox business account.</span>
         </label>
         <label className="mt-3 block text-sm">
           <span className="label">What do you sell?</span>

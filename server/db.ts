@@ -39,10 +39,10 @@ export type Product = {
   category: string;
   /** What the buyer must receive: used to verify the delivery. */
   deliverable: string;
-  kind: "data" | "digital" | "service";
+  kind: "data" | "digital" | "service" | "physical";
 };
 
-export type Behavior = "honest" | "overcharge" | "stream" | "ghost" | "junk";
+export type Behavior = "honest" | "overcharge" | "pricejump" | "ghost" | "junk";
 
 export type Store = {
   id: string;
@@ -78,7 +78,7 @@ export type Purchase = {
   status: PurchaseStatus;
   rule?: string;
   reason?: string;
-  paypal: { orderId?: string; authorizationId?: string; captureId?: string; refundId?: string };
+  paypal: { orderId?: string; authorizationId?: string; captureId?: string; refundId?: string; tracking?: string };
   delivery?: { sha256: string; contentType: string; bytes: number; preview: string };
   verdict?: { ok: boolean; by: "checks" | "ai"; reason: string };
   createdAt: string;

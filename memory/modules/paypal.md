@@ -17,6 +17,7 @@ related_files:
 - `createSetupToken`, `createPaymentToken` — Vault v3, owner approves once
 - `authorize` — Orders v2 AUTHORIZE with `vault_id`; calls /authorize if not completed
 - `capture`, `void`, `refund` — Payments v2; idempotency via PayPal-Request-Id
+- `addTracking`, `read`, `verifyWebhook`; `server/paypal-tools.ts` maps Agent Toolkit tool names to allow/route/deny
 
 ## Gotchas
 > [!warning]

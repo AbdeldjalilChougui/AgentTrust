@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import { API, STATUS, ago, api, gridTheme, usd, type AppState, type Purchase, type StoreView } from "../api";
@@ -31,7 +31,52 @@ export function Dashboard({ state, stores, purchases, refresh }: { state: AppSta
 
       <PurchasesGrid purchases={purchases} onSelect={setSelected} refresh={refresh} />
       {selected && <PurchaseDetail p={purchases.find((x) => x.id === selected.id) ?? selected} onClose={() => setSelected(null)} />}
-      <McpCard token={state.agent.token} />
+      <section className="grid gap-5 lg:grid-cols-[1fr_1fr]">
+        <ToolPolicy />
+        <McpCard token={state.agent.token} />
+      </section>
+    </div>
+  );
+}
+
+type ToolRule = { tool: string; policy: "allow" | "route" | "deny"; why: string };
+const POLICY_STYLE: Record<ToolRule["policy"], string> = {
+  allow: "bg-emerald-100 text-emerald-800",
+  route: "bg-sky-100 text-sky-800",
+  deny: "bg-rose-100 text-rose-800",
+};
+
+/** How AgentTrust treats each PayPal Agent Toolkit tool an agent might call. */
+function ToolPolicy() {
+  const [rows, setRows] = useState<ToolRule[]>([]);
+  useEffect(() => {
+    api<ToolRule[]>("GET", "/api/paypal-tools").then(setRows).catch(() => {});
+  }, []);
+  const cols = useMemo<ColDef<ToolRule>[]>(
+    () => [
+      { headerName: "PayPal Agent Toolkit tool", field: "tool", flex: 1.1, cellClass: "font-mono text-xs", filter: true },
+      {
+        headerName: "AgentTrust",
+        field: "policy",
+        width: 120,
+        filter: true,
+        cellRenderer: (p: ICellRendererParams<ToolRule>) =>
+          p.data ? <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${POLICY_STYLE[p.data.policy]}`}>{p.data.policy}</span> : null,
+      },
+      { headerName: "Why", field: "why", flex: 1.6 },
+    ],
+    [],
+  );
+  return (
+    <div className="card">
+      <h3 className="font-display font-bold">PayPal Agent Toolkit, with a firewall</h3>
+      <p className="mt-1 text-sm text-slate-600">
+        Agents may use PayPal's own toolkit tools. Read-only tools pass straight through; anything that moves money is routed through the owner's
+        rules and the PayPal hold; merchant and owner actions are denied.
+      </p>
+      <div className="mt-3 h-[300px]">
+        <AgGridReact<ToolRule> theme={gridTheme} rowData={rows} columnDefs={cols} getRowId={(p) => p.data.tool} />
+      </div>
     </div>
   );
 }

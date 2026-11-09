@@ -23,6 +23,11 @@ export interface PaymentProvider {
   capture(authorizationId: string, amount: number): Promise<{ captureId: string; status: string }>;
   void(authorizationId: string): Promise<{ status: string }>;
   refund(captureId: string, amount: number, note: string): Promise<{ refundId: string; status: string }>;
+  /** Shipment tracking on the order, so the payer sees it in PayPal. */
+  addTracking(p: { orderId: string; captureId: string; trackingNumber: string; carrier: string }): Promise<{ id: string }>;
+  /** Read-only PayPal calls exposed to agents through the tool policy. */
+  read(path: string): Promise<unknown>;
+  verifyWebhook(headers: Record<string, string | string[] | undefined>, event: unknown): Promise<boolean>;
 }
 
 const money = (n: number) => ({ currency_code: "USD", value: n.toFixed(2) });
@@ -158,6 +163,36 @@ export class PayPalSandbox implements PaymentProvider {
     }, `ref-${captureId}`);
     return { refundId: r.id as string, status: r.status as string };
   }
+
+  async addTracking(p: { orderId: string; captureId: string; trackingNumber: string; carrier: string }) {
+    const r = await this.call("POST", `/v2/checkout/orders/${p.orderId}/track`, {
+      capture_id: p.captureId,
+      tracking_number: p.trackingNumber,
+      carrier: p.carrier,
+      notify_payer: false,
+    }, `trk-${p.captureId}`);
+    return { id: (r.purchase_units?.[0]?.shipping?.trackers?.[0]?.id ?? r.id ?? p.trackingNumber) as string };
+  }
+
+  read(path: string) {
+    return this.call("GET", path);
+  }
+
+  async verifyWebhook(headers: Record<string, string | string[] | undefined>, event: unknown) {
+    const webhookId = process.env.PAYPAL_WEBHOOK_ID;
+    if (!webhookId) return false;
+    const h = (k: string) => String(headers[k] ?? "");
+    const r = await this.call<{ verification_status: string }>("POST", "/v1/notifications/verify-webhook-signature", {
+      auth_algo: h("paypal-auth-algo"),
+      cert_url: h("paypal-cert-url"),
+      transmission_id: h("paypal-transmission-id"),
+      transmission_sig: h("paypal-transmission-sig"),
+      transmission_time: h("paypal-transmission-time"),
+      webhook_id: webhookId,
+      webhook_event: event,
+    });
+    return r.verification_status === "SUCCESS";
+  }
 }
 
 /** Same flows without PayPal: for development, tests and offline demos. */
@@ -204,6 +239,15 @@ export class PayPalMock implements PaymentProvider {
   async refund() {
     return { refundId: this.id("REFUND"), status: "COMPLETED" };
   }
+  async addTracking(p: { trackingNumber: string }) {
+    return { id: `TRACK-MOCK-${p.trackingNumber}` };
+  }
+  async read(path: string) {
+    return { mock: true, path, note: "PayPal mock mode: connect sandbox keys for live data" };
+  }
+  async verifyWebhook() {
+    return false;
+  }
 }
 
 export function createProvider(): PaymentProvider {
@@ -216,5 +260,3 @@ export function createProvider(): PaymentProvider {
   return new PayPalMock();
 }
 
-export const paypalLink = (mode: string, kind: "order" | "authorization" | "capture", id?: string) =>
-  mode === "sandbox" && id ? `https://www.sandbox.paypal.com/activity/payment/${id}` : undefined;

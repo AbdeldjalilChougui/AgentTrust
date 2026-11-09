@@ -15,7 +15,7 @@ related_files:
 **Purpose:** storefront protocol (`agent-store.json`, `catalog`, `quote`, `fulfil`), 10 demo stores, AI store kit.
 
 ## Main functions / classes
-- Behaviors: honest, overcharge (x20 quote), stream (more:true), ghost (no answer), junk (HTML)
+- Behaviors: honest, overcharge (x4 quote), pricejump (49.99 on renewal), ghost (never ships), junk (placeholder delivery)
 - `draftStore` (Gemini, CSV fallback), `publishStore`
 
 ## Gotchas

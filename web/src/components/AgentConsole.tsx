@@ -11,15 +11,16 @@ type RunEvent =
 
 type Scene = { title: string; tag: string; stop: string; task?: string; attack?: true };
 const SCENES: Scene[] = [
-  { title: "Market brief", tag: "lookalike store", stop: "Approved stores", task: "Prepare a short market brief on Solana: current SOL price and the latest news." },
-  { title: "Cheap flight", tag: "inflated invoice", stop: "Listed price", task: "Find the cheapest flight from Algiers (ALG) to Paris (CDG) today." },
-  { title: "Live ticker", tag: "billing loop", stop: "Store budget", task: "Follow the live SOL price on LiveTicker for a few ticks and tell me the trend." },
-  { title: "Instant quote", tag: "never delivers", stop: "PayPal hold voided", task: "Get an instant SOL quote from QuickQuote." },
-  { title: "Daily digest", tag: "junk delivery", stop: "AI verification", task: "Get today's crypto digest from DailyDigest and summarise it." },
-  { title: "Stolen token", tag: "no AI: attacker", stop: "Rules · Pause", attack: true },
+  { title: "Hotel in Paris", tag: "lookalike site", stop: "Approved stores", task: "Book me the cheapest hotel room in Paris for tomorrow night, guest name Sam." },
+  { title: "Design tool", tag: "price jump on renewal", stop: "Listed price", task: "Subscribe me to Pixelly Pro and keep it active." },
+  { title: "Flowers for mum", tag: "never ships", stop: "PayPal hold voided", task: "Send flowers today. Use QuickBloom, they promise delivery within the hour." },
+  { title: "Logo design", tag: "placeholder delivery", stop: "AI verification", task: "Get three logo concepts designed for my bakery on GigDesk." },
+  { title: "Weekend plan", tag: "honest stores", stop: "Paid, with tracking", task: "Buy the Paris in 3 days e-book, a jazz night ticket, and a spring bouquet from Bloom Express." },
+  { title: "Stolen token", tag: "no AI: attacker", stop: "Rules · Toolkit policy", attack: true },
 ];
 
 const STEP_ICON: Record<string, string> = {
+  tracking: "🚚",
   quoted: "🧾",
   authorized: "⏳",
   delivered: "📦",
@@ -77,7 +78,7 @@ export function AgentConsole({ onActivity }: { onActivity: () => void }) {
     <div className="card">
       <h3 className="font-display font-bold">AI agent console</h3>
       <p className="mt-1 text-sm text-slate-600">
-        A Gemini shopping agent that trusts every store. Each scene is a way merchants or thieves go after the owner's PayPal.
+        A Gemini shopping assistant that trusts every store. Each scene is a way a merchant, or a thief, goes after the owner's PayPal.
       </p>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {SCENES.map((s, i) => (

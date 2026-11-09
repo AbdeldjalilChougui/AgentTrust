@@ -1,6 +1,6 @@
 // End-to-end through the HTTP API, no LLM: every protection, the PayPal
-// hold/capture/void/refund flow, the store kit and the owner controls.
-// Needs `pnpm server` running (mock or sandbox mode).
+// hold/capture/void/refund flow, shipment tracking, the Agent Toolkit policy,
+// the store kit and the owner controls. Needs `pnpm server` running.
 import assert from "node:assert/strict";
 
 const BASE = (process.env.E2E_BASE ?? "http://localhost:4500").replace(/\/$/, "");
@@ -31,97 +31,107 @@ const state = (await api("GET", "/api/state")).json;
 const token: string = state.agent.token;
 console.log(`AgentTrust at ${BASE} · PayPal ${state.paypalMode} · owner PayPal ${state.owner.paypal.status}`);
 await api("POST", "/api/owner/reset");
-await api("POST", "/api/owner/pause", { paused: false });
 
+type BuyOut = { purchases: { outcome: string; reason?: string; amount_usd: number }[]; data?: any };
 const buy = async (store: string, product: string, params: Record<string, string> = {}) => {
   const r = await api("POST", "/agent/v1/buy", { store, product_id: product, params }, token);
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  return r.json as { purchases: { outcome: string; reason?: string; amount_usd: number }[]; data?: any };
+  return r.json as BuyOut;
 };
-const outcome = (r: Awaited<ReturnType<typeof buy>>) => r.purchases[0];
+const first = (r: BuyOut) => r.purchases[0];
+const latest = async () => (await api("GET", "/agent/v1/purchases", undefined, token)).json[0];
 
-let capturedId = "";
+let hotelPurchase = "";
 
 await check("agent API rejects a bad token", async () => {
   assert.equal((await api("GET", "/agent/v1/budget", undefined, "at_nope")).status, 401);
 });
 
-await check("stores are listed with products and reputation", async () => {
-  const r = await api("GET", "/agent/v1/stores", undefined, token);
-  assert.ok(r.json.length >= 10, `only ${r.json.length} stores`);
+await check("hotel booking: PayPal hold, confirmation verified, captured", async () => {
+  const r = await buy("staywell", "staywell-1", { guest: "Sam" });
+  assert.equal(first(r).outcome, "captured", JSON.stringify(r.purchases));
+  assert.match(r.data?.confirmation ?? "", /^BK-/);
+  const p = await latest();
+  assert.ok(p.paypal.orderId && p.paypal.authorizationId && p.paypal.captureId, "missing PayPal ids");
+  hotelPurchase = p.id;
 });
 
-await check("honest store: hold, deliver, verify, capture, real data", async () => {
-  const r = await buy("coindata", "coindata-1", { ids: "solana" });
-  assert.equal(outcome(r).outcome, "captured", JSON.stringify(r.purchases));
-  assert.ok(r.data?.prices?.solana?.usd > 0, "no SOL price delivered");
-  const p = (await api("GET", "/agent/v1/purchases", undefined, token)).json[0];
-  assert.ok(p.paypal.authorizationId && p.paypal.captureId, "missing PayPal ids");
-  capturedId = p.id;
-});
-
-await check("lookalike store is blocked (not approved)", async () => {
-  const o = outcome(await buy("coindatas", "coindatas-1"));
+await check("lookalike hotel site is blocked (not approved)", async () => {
+  const o = first(await buy("staywel", "staywel-1"));
   assert.equal(o.outcome, "blocked");
   assert.match(o.reason ?? "", /not approved/);
 });
 
-await check("invoice above listed price is blocked before PayPal", async () => {
-  const o = outcome(await buy("flightdeals", "flightdeals-1"));
+await check("hotel invoicing 4x its listed price is blocked before PayPal", async () => {
+  const o = first(await buy("grandplaza", "grandplaza-1"));
   assert.equal(o.outcome, "blocked");
   assert.match(o.reason ?? "", /listed price/);
+  assert.equal(o.amount_usd, 480);
 });
 
-await check("billing loop stops at the store's daily budget", async () => {
-  const r = await buy("liveticker", "liveticker-1", { ids: "solana" });
-  const outs = r.purchases.map((p) => p.outcome);
-  assert.ok(outs.filter((o) => o === "captured").length >= 2, outs.join(","));
-  assert.equal(outs.at(-1), "blocked", outs.join(","));
-  assert.match(r.purchases.at(-1)?.reason ?? "", /store's daily budget/);
+await check("subscription price jump on renewal is blocked", async () => {
+  const r = await buy("pixelly", "pixelly-1");
+  assert.deepEqual(r.purchases.map((p) => p.outcome), ["captured", "blocked"], JSON.stringify(r.purchases));
+  assert.match(r.purchases[1].reason ?? "", /listed price/);
 });
 
-await check("junk delivery is rejected and the hold voided", async () => {
-  const o = outcome(await buy("dailydigest", "dailydigest-1"));
+await check("flowers shipped: captured and tracking added to the PayPal order", async () => {
+  const o = first(await buy("bloomexpress", "bloomexpress-1"));
+  assert.equal(o.outcome, "captured", JSON.stringify(o));
+  const p = await latest();
+  assert.ok(p.paypal.tracking, "no tracking on the PayPal order");
+});
+
+await check("freelancer delivers placeholders: rejected, hold voided", async () => {
+  const o = first(await buy("gigdesk", "gigdesk-1"));
   assert.equal(o.outcome, "voided", JSON.stringify(o));
 });
 
 await check("gift cards are blocked (store and category not allowed)", async () => {
-  assert.equal(outcome(await buy("giftcardsnow", "giftcardsnow-1")).outcome, "blocked");
+  assert.equal(first(await buy("gifthub", "gifthub-1")).outcome, "blocked");
+});
+
+await check("PayPal Agent Toolkit policy: read allowed, money tools routed or denied", async () => {
+  const read = await api("POST", "/agent/v1/paypal", { tool: "get_order", args: { order_id: (await latest()).paypal.orderId ?? "x" } }, token);
+  assert.equal(read.json.policy, "allow", JSON.stringify(read.json));
+  const pay = await api("POST", "/agent/v1/paypal", { tool: "pay_order", args: {} }, token);
+  assert.equal(pay.json.policy, "route");
+  const inv = await api("POST", "/agent/v1/paypal", { tool: "send_invoice", args: {} }, token);
+  assert.equal(inv.json.policy, "deny");
 });
 
 await check("agent token cannot use the owner API", async () => {
   assert.equal((await api("PUT", "/api/owner/mandate", { dailyLimit: 10000 }, token)).status, 403);
 });
 
-await check("owner refunds a captured purchase; budget is credited back", async () => {
+await check("owner refunds the hotel; budget credited back", async () => {
   const before = (await api("GET", "/agent/v1/budget", undefined, token)).json.spent_today_usd;
-  const r = await api("POST", `/api/purchases/${capturedId}/refund`, { reason: "test refund" });
+  const r = await api("POST", `/api/purchases/${hotelPurchase}/refund`, { reason: "trip cancelled" });
   assert.equal(r.json.status, "refunded", JSON.stringify(r.json));
   const after = (await api("GET", "/agent/v1/budget", undefined, token)).json.spent_today_usd;
   assert.ok(after < before, `spent ${before} -> ${after}`);
 });
 
-await check("store kit: draft, publish, approve, then an agent buys there", async () => {
-  const d = await api("POST", "/api/storekit/draft", { name: "Glyph Studio", text: "Icon pack, 3.50, 120 line icons in SVG\nLogo kit, 6, 20 logo templates" });
+await check("store kit: AI catalog, publish, approve, agent buys there", async () => {
+  const d = await api("POST", "/api/storekit/draft", { name: "Oran Ceramics", text: "Handmade mug, 18, blue glazed mug shipped from Oran\nSet of 4 bowls, 45, shipped in 3 days" });
   assert.equal(d.status, 200, JSON.stringify(d.json));
   const s = await api("POST", "/api/storekit/publish", { draft: d.json.draft });
   assert.equal(s.status, 200, JSON.stringify(s.json));
-  await api("POST", `/api/owner/stores/${s.json.id}/approve`, { dailyCap: 20 });
-  const product = s.json.products[0];
-  const o = outcome(await buy(s.json.slug, product.id));
+  await api("POST", `/api/owner/stores/${s.json.id}/approve`, { dailyCap: 100 });
+  const o = first(await buy(s.json.slug, s.json.products[0].id));
   assert.equal(o.outcome, "captured", JSON.stringify(o));
 });
 
 await check("owner pause blocks everything", async () => {
   await api("POST", "/api/owner/pause", { paused: true });
-  const o = outcome(await buy("coindata", "coindata-1"));
+  const o = first(await buy("pageturner", "pageturner-1"));
   await api("POST", "/api/owner/pause", { paused: false });
   assert.equal(o.outcome, "blocked");
   assert.match(o.reason ?? "", /paused/);
 });
 
-await check("store that never delivers: hold voided after the timeout", async () => {
-  const o = outcome(await buy("quickquote", "quickquote-1"));
+await check("flowers never shipped: hold voided after the timeout", async () => {
+  const o = first(await buy("quickbloom", "quickbloom-1"));
   assert.equal(o.outcome, "voided", JSON.stringify(o));
 });
 

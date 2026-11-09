@@ -36,7 +36,7 @@ server.registerTool(
     inputSchema: {
       store: z.string().describe("store id from search_stores"),
       product_id: z.string(),
-      params: z.record(z.string(), z.string()).optional().describe('e.g. {"ids":"solana"} or {"city":"Paris"}'),
+      params: z.record(z.string(), z.string()).optional().describe('e.g. {"check_in":"2026-11-20","guest":"Sam"}'),
     },
   },
   async ({ store, product_id, params }) => text(await call("POST", "/agent/v1/buy", { store, product_id, params })),
@@ -50,6 +50,15 @@ server.registerTool(
   "my_purchases",
   { description: "Recent purchases with their PayPal outcome (captured, voided, blocked, refunded).", inputSchema: {} },
   async () => text(await call("GET", "/agent/v1/purchases")),
+);
+server.registerTool(
+  "paypal",
+  {
+    description:
+      "Run a PayPal Agent Toolkit tool under the owner's policy. Read-only tools (get_order, get_refund, get_shipment_tracking, list_transactions, list_disputes, get_dispute) pass through; tools that move money must go through buy or dispute.",
+    inputSchema: { tool: z.string(), args: z.record(z.string(), z.string()).optional() },
+  },
+  async ({ tool, args }) => text(await call("POST", "/agent/v1/paypal", { tool, args })),
 );
 server.registerTool(
   "dispute",

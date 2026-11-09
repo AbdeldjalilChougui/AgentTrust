@@ -1,6 +1,6 @@
-// pnpm agent "Prepare a short market brief on Solana"   |   pnpm agent attack
+// pnpm agent "Book me a hotel room in Paris for tomorrow night"   |   pnpm agent attack
 const BASE = (process.env.AGENTTRUST_URL ?? "http://localhost:4500").replace(/\/$/, "");
-const task = process.argv.slice(2).join(" ") || "Prepare a short market brief on Solana: price and latest news.";
+const task = process.argv.slice(2).join(" ") || "Book me the cheapest hotel room in Paris for tomorrow night.";
 
 const ICON: Record<string, string> = { captured: "✅", voided: "↩️ ", blocked: "⛔", refunded: "↩️ ", failed: "✖" };
 
