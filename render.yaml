@@ -27,6 +27,8 @@ services:
         sync: false
       - key: DEMO_AGENT_TOKEN
         sync: false
+      - key: DEMO_PAYER_EMAIL
+        sync: false
       - key: DATA_FILE
         value: /tmp/agenttrust-state.json
 
