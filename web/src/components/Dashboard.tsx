@@ -31,7 +31,7 @@ export function Dashboard({ state, stores, purchases, refresh }: { state: AppSta
 
       <PurchasesGrid purchases={purchases} onSelect={setSelected} refresh={refresh} />
       {selected && <PurchaseDetail p={purchases.find((x) => x.id === selected.id) ?? selected} onClose={() => setSelected(null)} />}
-      <section className="grid gap-5 lg:grid-cols-[1fr_1fr]">
+      <section className="grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <ToolPolicy />
         <McpCard token={state.agent.token} />
       </section>
@@ -325,7 +325,7 @@ function McpCard({ token }: { token: string }) {
         <code>POST {API}/agent/v1/buy</code> with the agent token.
       </p>
       <div className="mt-3 flex items-center gap-2">
-        <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-100">{cmd}</code>
+        <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-100">{cmd}</code>
         <button className="btn-ghost !py-1.5 text-xs" onClick={() => setShow(!show)}>{show ? "Hide token" : "Show token"}</button>
       </div>
     </div>
