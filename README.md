@@ -129,4 +129,6 @@ Terminal agent: `pnpm agent "Book me a hotel room in Paris for tomorrow night"` 
 - PayPal honors an authorization for 3 days, which covers digital goods, bookings and short shipping; longer deliveries would reauthorize.
 - Delivery verification combines format checks with an AI judgement against the product's promised deliverable; each delivery's content hash is kept with the purchase.
 
+[![M8ven Score](https://m8ven.ai/badge/mcp/abdeldjalilchougui-agenttrust-1it70p?v=34ae41117dfd15defb31bc24172a4b18)](https://m8ven.ai/mcp/abdeldjalilchougui-agenttrust-1it70p?s=readme)
+
 MIT licence.
